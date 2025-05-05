@@ -222,13 +222,29 @@ public class MiniJavaStoreDB {
         }
     }
 
-    // Empty the cart
+    // Empty the cart and restock items back to inventory
     private static void clearCart(Connection conn) throws SQLException {
-        try (Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate("DELETE FROM cart");
-            System.out.println("Cart has been cleared.");
+    String sql = "SELECT name, quantity FROM cart";
+    try (Statement stmt = conn.createStatement();
+         ResultSet rs = stmt.executeQuery(sql)) {
+
+        while (rs.next()) {
+            String name = rs.getString("name");
+            int qty = rs.getInt("quantity");
+            try (PreparedStatement ps = conn.prepareStatement("UPDATE items SET stocks = stocks + ? WHERE name = ?")) {
+                ps.setInt(1, qty);
+                ps.setString(2, name);
+                ps.executeUpdate();
+            }
         }
     }
+
+    try (Statement stmt = conn.createStatement()) {
+        stmt.executeUpdate("DELETE FROM cart");
+        System.out.println("Cart has been cleared and items goes back to inventory");
+    }
+}
+
 
     // Add new item to inventory
     private static void addItem(Connection conn) throws SQLException {
