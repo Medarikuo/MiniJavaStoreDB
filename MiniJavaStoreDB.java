@@ -17,29 +17,31 @@ public class MiniJavaStoreDB {
             try (Connection conn = DriverManager.getConnection(DB_URL, USER, PASS)) {
                 while (true) {
                     System.out.println("\n=== Mini Java Store ===");
-                    System.out.println("1. View Items");
-                    System.out.println("2. Buy Item (Add to Cart)");
-                    System.out.println("3. View Cart");
-                    System.out.println("4. Checkout (Pay)");
-                    System.out.println("5. Clear Cart");
-                    System.out.println("6. Add New Item");
-                    System.out.println("7. Update Item");
-                    System.out.println("8. Delete Item");
-                    System.out.println("9. View Inventory");
-                    System.out.println("0. Exit");
-                    System.out.print("Choose an option: ");
+                    System.out.println("[1] View Items");
+                    System.out.println("[2] Buy Item (Add to Cart)");
+					System.out.println("[3] Remove Item from Cart");
+                    System.out.println("[4] View Cart");
+                    System.out.println("[5] Checkout (Pay)");
+                    System.out.println("[6] Clear Cart");
+                    System.out.println("[7] Add New Item");
+                    System.out.println("[8] Update Item");
+                    System.out.println("[9] Delete Item");
+                    System.out.println("[10] View Inventory");
+                    System.out.println("[0] Exit");
+                    System.out.print("Choose an option 0-9: ");
                     String choice = scanner.nextLine();
 
                     switch (choice) {
                         case "1": viewItems(conn); break;
                         case "2": buyItem(conn); break;
-                        case "3": viewCart(conn); break;
-                        case "4": checkout(conn); break;
-                        case "5": clearCart(conn); break;
-                        case "6": addItem(conn); break;
-                        case "7": updateItem(conn); break;
-                        case "8": deleteItem(conn); break;
-                        case "9": viewInventory(conn); break;
+						case "3": removeItemFromCart(conn); break;
+                        case "4": viewCart(conn); break;
+                        case "5": checkout(conn); break;
+                        case "6": clearCart(conn); break;
+                        case "7": addItem(conn); break;
+                        case "8": updateItem(conn); break;
+                        case "9": deleteItem(conn); break;
+                        case "10": viewInventory(conn); break;
                         case "0": System.out.println("Exiting..."); return;
                         default: System.out.println("Invalid choice.");
                     }
@@ -317,6 +319,39 @@ public class MiniJavaStoreDB {
             }
         }
     }
+	
+	// Delete item from cart
+	private static void removeItemFromCart(Connection conn) throws SQLException {
+		System.out.print("Enter item name to remove from cart: ");
+		String name = scanner.nextLine().trim();
+
+		String selectSql = "SELECT quantity FROM cart WHERE name = ?";
+		try (PreparedStatement selectStmt = conn.prepareStatement(selectSql)) {
+			selectStmt.setString(1, name);
+			ResultSet rs = selectStmt.executeQuery();
+			if (rs.next()) {
+				int qty = rs.getInt("quantity");
+
+				// Restore the quantity back to inventory
+				try (PreparedStatement updateInventory = conn.prepareStatement(
+						"UPDATE items SET stocks = stocks + ? WHERE name = ?")) {
+					updateInventory.setInt(1, qty);
+					updateInventory.setString(2, name);
+					updateInventory.executeUpdate();
+				}
+
+				// Remove item from cart
+				try (PreparedStatement deleteStmt = conn.prepareStatement("DELETE FROM cart WHERE name = ?")) {
+					deleteStmt.setString(1, name);
+					deleteStmt.executeUpdate();
+				}
+
+				System.out.println("Item removed from cart and restocked.");
+			} else {
+				System.out.println("Item not found in cart.");
+			}
+		}
+	}
 
     // Delete item from inventory
     private static void deleteItem(Connection conn) throws SQLException {
