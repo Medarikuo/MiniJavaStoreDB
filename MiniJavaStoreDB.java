@@ -28,7 +28,7 @@ public class MiniJavaStoreDB {
                     System.out.println("[9] Delete Item");
                     System.out.println("[10] View Inventory");
                     System.out.println("[0] Exit");
-                    System.out.print("Choose an option 0-9: ");
+                    System.out.print("Choose an option 0-10: ");
                     String choice = scanner.nextLine();
 
                     switch (choice) {
