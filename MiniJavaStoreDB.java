@@ -201,70 +201,71 @@ public class MiniJavaStoreDB {
 
     // Finalize cart purchase
     private static void checkout(Connection conn) throws SQLException {
-        String sql = "SELECT * FROM cart";
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            int total = 0;
-            boolean hasItems = false;
-
-            while (rs.next()) {
-                hasItems = true;
-                total += rs.getInt("total_price");
-            }
-
-            if (!hasItems) {
-                System.out.println("Cart is empty.");
-                return;
-            }
-
-            System.out.println("Checkout complete. Total paid: P" + total);
-            clearCart(conn);
+        viewCart(conn);
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("DELETE FROM cart");
+            System.out.println("Checked out successfully.");
         }
     }
 
     // Empty the cart and restock items back to inventory
     private static void clearCart(Connection conn) throws SQLException {
-    String sql = "SELECT name, quantity FROM cart";
-    try (Statement stmt = conn.createStatement();
-         ResultSet rs = stmt.executeQuery(sql)) {
+		String sql = "SELECT name, quantity FROM cart";
+		try (Statement stmt = conn.createStatement();
+			 ResultSet rs = stmt.executeQuery(sql)) {
 
-        while (rs.next()) {
-            String name = rs.getString("name");
-            int qty = rs.getInt("quantity");
-            try (PreparedStatement ps = conn.prepareStatement("UPDATE items SET stocks = stocks + ? WHERE name = ?")) {
-                ps.setInt(1, qty);
-                ps.setString(2, name);
-                ps.executeUpdate();
-            }
-        }
-    }
+			while (rs.next()) {
+				String name = rs.getString("name");
+				int qty = rs.getInt("quantity");
+				try (PreparedStatement ps = conn.prepareStatement("UPDATE items SET stocks = stocks + ? WHERE name = ?")) {
+					ps.setInt(1, qty);
+					ps.setString(2, name);
+					ps.executeUpdate();
+				}
+			}
+		}
 
-    try (Statement stmt = conn.createStatement()) {
-        stmt.executeUpdate("DELETE FROM cart");
-        System.out.println("Cart has been cleared and items goes back to inventory");
-    }
-}
+		try (Statement stmt = conn.createStatement()) {
+			stmt.executeUpdate("DELETE FROM cart");
+			System.out.println("Cart has been cleared and items goes back to inventory");
+		}
+	}
 
 
     // Add new item to inventory
     private static void addItem(Connection conn) throws SQLException {
         System.out.print("Enter code: ");
         String code = scanner.nextLine().trim().toUpperCase();
+		// Check for duplicate code
+        String checkSql = "SELECT * FROM items WHERE code = ?";
+        try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
+            checkStmt.setString(1, code);
+            ResultSet rs = checkStmt.executeQuery();
+            if (rs.next()) {
+                System.out.println("Item code already exists!");
+                return;
+            }
+        }
         System.out.print("Enter name: ");
         String name = scanner.nextLine().trim();
-        System.out.print("Enter price: ");
-        int price = Integer.parseInt(scanner.nextLine());
-        System.out.print("Enter stock: ");
-        int stocks = Integer.parseInt(scanner.nextLine());
+		
+        try {
+            System.out.print("Enter price: ");
+            int price = Integer.parseInt(scanner.nextLine());
+            System.out.print("Enter stocks: ");
+            int stocks = Integer.parseInt(scanner.nextLine());
 
-        String sql = "INSERT INTO items (code, name, price, stocks) VALUES (?, ?, ?, ?)";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, code);
-            ps.setString(2, name);
-            ps.setInt(3, price);
-            ps.setInt(4, stocks);
-            ps.executeUpdate();
-            System.out.println("Item added.");
+            String sql = "INSERT INTO items (code, name, price, stocks) VALUES (?, ?, ?, ?)";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, code);
+                ps.setString(2, name);
+                ps.setInt(3, price);
+                ps.setInt(4, stocks);
+                ps.executeUpdate();
+                System.out.println("Item added.");
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid number input.");
         }
     }
 
@@ -272,19 +273,48 @@ public class MiniJavaStoreDB {
     private static void updateItem(Connection conn) throws SQLException {
         System.out.print("Enter item code to update: ");
         String code = scanner.nextLine().trim().toUpperCase();
-        System.out.print("New price: ");
-        int price = Integer.parseInt(scanner.nextLine());
-        System.out.print("New stock: ");
-        int stocks = Integer.parseInt(scanner.nextLine());
+		String selectSql = "SELECT * FROM items WHERE code = ?";
+        try (PreparedStatement selectStmt = conn.prepareStatement(selectSql)) {
+            selectStmt.setString(1, code);
+            ResultSet rs = selectStmt.executeQuery();
+            if (!rs.next()) {
+                System.out.println("Item not found.");
+                return;
+            }
+			
+			String name = rs.getString("name");
+            int price = rs.getInt("price");
+            int stocks = rs.getInt("stocks");
 
-        String sql = "UPDATE items SET price = ?, stocks = ? WHERE code = ?";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, price);
-            ps.setInt(2, stocks);
-            ps.setString(3, code);
-            int rows = ps.executeUpdate();
-            if (rows > 0) System.out.println("Item updated.");
-            else System.out.println("Item not found.");
+            System.out.println("Current name: " + name);
+            System.out.print("New name (or press Enter to keep): ");
+            String newName = scanner.nextLine();
+            if (!newName.isBlank()) name = newName;
+
+            try {
+                System.out.println("Current price: " + price);
+                System.out.print("New price (or press Enter to keep): ");
+                String newPriceInput = scanner.nextLine();
+                if (!newPriceInput.isBlank()) price = Integer.parseInt(newPriceInput);
+
+                System.out.println("Current stocks: " + stocks);
+                System.out.print("New stocks (or press Enter to keep): ");
+                String newStockInput = scanner.nextLine();
+                if (!newStockInput.isBlank()) stocks = Integer.parseInt(newStockInput);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid number input.");
+                return;
+            }
+
+            String updateSql = "UPDATE items SET name = ?, price = ?, stocks = ? WHERE code = ?";
+            try (PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
+                updateStmt.setString(1, name);
+                updateStmt.setInt(2, price);
+                updateStmt.setInt(3, stocks);
+                updateStmt.setString(4, code);
+                updateStmt.executeUpdate();
+                System.out.println("Item updated.");
+            }
         }
     }
 
@@ -293,14 +323,25 @@ public class MiniJavaStoreDB {
         System.out.print("Enter item code to delete: ");
         String code = scanner.nextLine().trim().toUpperCase();
 
-        String sql = "DELETE FROM items WHERE code = ?";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, code);
-            int rows = ps.executeUpdate();
-            if (rows > 0) {
-                System.out.println("Item deleted.");
+        String getNameSql = "SELECT name FROM items WHERE code = ?";
+        try (PreparedStatement nameStmt = conn.prepareStatement(getNameSql)) {
+            nameStmt.setString(1, code);
+            ResultSet rs = nameStmt.executeQuery();
+            if (rs.next()) {
+                String name = rs.getString("name");
+
+                try (PreparedStatement deleteCart = conn.prepareStatement("DELETE FROM cart WHERE name = ?")) {
+                    deleteCart.setString(1, name);
+                    deleteCart.executeUpdate();
+                }
+
+                try (PreparedStatement deleteItem = conn.prepareStatement("DELETE FROM items WHERE code = ?")) {
+                    deleteItem.setString(1, code);
+                    deleteItem.executeUpdate();
+                    System.out.println("Item deleted.");
+                }
             } else {
-                System.out.println("Item not found.");
+                System.out.println("Item code not found.");
             }
         }
     }
