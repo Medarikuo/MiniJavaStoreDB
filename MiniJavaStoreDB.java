@@ -1,4 +1,5 @@
 import java.sql.*;
+import java.math.BigDecimal;
 import java.util.Scanner;
 
 public class MiniJavaStoreDB {
@@ -70,7 +71,7 @@ public class MiniJavaStoreDB {
                 CREATE TABLE IF NOT EXISTS items (
                     code VARCHAR(10) PRIMARY KEY,
                     name VARCHAR(100),
-                    price INT,
+                    price DECIMAL(10,2),
                     stocks INT
                 )
             """);
@@ -81,7 +82,7 @@ public class MiniJavaStoreDB {
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(100),
                     quantity INT,
-                    total_price INT
+                    total_price DECIMAL(10,2)
                 )
             """);
 
@@ -89,9 +90,9 @@ public class MiniJavaStoreDB {
             ResultSet rs = dbStmt.executeQuery("SELECT COUNT(*) FROM items");
             if (rs.next() && rs.getInt(1) == 0) {
                 dbStmt.executeUpdate("INSERT INTO items (code, name, price, stocks) VALUES " +
-                        "('A001', 'Milk', 50, 20)," +
-                        "('B002', 'Bread', 30, 15)," +
-                        "('C003', 'Eggs', 10, 50)");
+                        "('A001', 'Milk', 50.00, 20)," +
+                        "('B002', 'Bread', 30.00, 15)," +
+                        "('C003', 'Eggs', 10.00, 50)");
                 System.out.println("Initial data populated.");
             }
         }
@@ -110,8 +111,8 @@ public class MiniJavaStoreDB {
             System.out.println("\nAvailable Items:");
             System.out.printf("%-10s %-30s %-10s\n", "Code", "Description", "Price");
             while (rs.next()) {
-                System.out.printf("%-10s %-30s P%-10d\n",
-                        rs.getString("code"), rs.getString("name"), rs.getInt("price"));
+                System.out.printf("%-10s %-30s P%-10.2f\n",
+                        rs.getString("code"), rs.getString("name"), rs.getBigDecimal("price"));
             }
         }
     }
@@ -133,7 +134,7 @@ public class MiniJavaStoreDB {
             }
 
             String name = rs.getString("name");
-            int price = rs.getInt("price");
+            BigDecimal price = rs.getBigDecimal("price");
             int stocks = rs.getInt("stocks");
 
             System.out.print("Enter quantity: ");
@@ -148,7 +149,8 @@ public class MiniJavaStoreDB {
                 System.out.println("Invalid number.");
                 return;
             }
-
+			
+			BigDecimal totalPrice = price.multiply(BigDecimal.valueOf(qty));
             int newStocks = stocks - qty;
             try (PreparedStatement updatePS = conn.prepareStatement("UPDATE items SET stocks = ? WHERE code = ?")) {
                 updatePS.setInt(1, newStocks);
@@ -162,11 +164,11 @@ public class MiniJavaStoreDB {
 
                 if (cartRS.next()) {
                     int newQty = cartRS.getInt("quantity") + qty;
-                    int newTotal = cartRS.getInt("total_price") + (price * qty);
+                    BigDecimal newTotal = cartRS.getBigDecimal("total_price").add(totalPrice);
                     try (PreparedStatement updateCart = conn.prepareStatement(
                             "UPDATE cart SET quantity = ?, total_price = ? WHERE name = ?")) {
                         updateCart.setInt(1, newQty);
-                        updateCart.setInt(2, newTotal);
+                        updateCart.setBigDecimal(2, newTotal);
                         updateCart.setString(3, name);
                         updateCart.executeUpdate();
                     }
@@ -175,7 +177,7 @@ public class MiniJavaStoreDB {
                             "INSERT INTO cart (name, quantity, total_price) VALUES (?, ?, ?)")) {
                         insertPS.setString(1, name);
                         insertPS.setInt(2, qty);
-                        insertPS.setInt(3, price * qty);
+                        insertPS.setBigDecimal(3, totalPrice);
                         insertPS.executeUpdate();
                     }
                 }
@@ -189,15 +191,15 @@ public class MiniJavaStoreDB {
         String sql = "SELECT * FROM cart";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
-            int total = 0;
+            BigDecimal total = BigDecimal.ZERO;
             System.out.println("\nYour Cart:");
             System.out.printf("%-30s %-10s %-10s\n", "Item", "Qty", "Price");
             while (rs.next()) {
-                System.out.printf("%-30s %-10d P%-10d\n",
-                        rs.getString("name"), rs.getInt("quantity"), rs.getInt("total_price"));
-                total += rs.getInt("total_price");
+                System.out.printf("%-30s %-10d P%-10.2f\n",
+                        rs.getString("name"), rs.getInt("quantity"), rs.getBigDecimal("total_price"));
+                total = total.add(rs.getBigDecimal("total_price"));
             }
-            System.out.println("Total: P" + total);
+            System.out.println("Total: P" + total.setScale(2));
         }
     }
 
@@ -253,15 +255,26 @@ public class MiniJavaStoreDB {
 		
         try {
             System.out.print("Enter price: ");
-            int price = Integer.parseInt(scanner.nextLine());
+            BigDecimal price = new BigDecimal(scanner.nextLine());
+			
+			if (price.compareTo(BigDecimal.ZERO) < 0) {
+                System.out.println("Price cannot be negative.");
+                return;
+            }
+			
             System.out.print("Enter stocks: ");
             int stocks = Integer.parseInt(scanner.nextLine());
-
+			
+			if (stocks < 0) {
+				System.out.println("Stocks cannot be negative.");
+				return;
+			}
+			
             String sql = "INSERT INTO items (code, name, price, stocks) VALUES (?, ?, ?, ?)";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setString(1, code);
                 ps.setString(2, name);
-                ps.setInt(3, price);
+                ps.setBigDecimal(3, price);
                 ps.setInt(4, stocks);
                 ps.executeUpdate();
                 System.out.println("Item added.");
@@ -285,7 +298,7 @@ public class MiniJavaStoreDB {
             }
 			
 			String name = rs.getString("name");
-            int price = rs.getInt("price");
+            BigDecimal price = rs.getBigDecimal("price");
             int stocks = rs.getInt("stocks");
 
             System.out.println("Current name: " + name);
@@ -297,12 +310,21 @@ public class MiniJavaStoreDB {
                 System.out.println("Current price: " + price);
                 System.out.print("New price (or press Enter to keep): ");
                 String newPriceInput = scanner.nextLine();
-                if (!newPriceInput.isBlank()) price = Integer.parseInt(newPriceInput);
-
+                if (!newPriceInput.isBlank()) price = new BigDecimal(newPriceInput);
+				
+				if (price.compareTo(BigDecimal.ZERO) < 0) {
+                    System.out.println("Price cannot be negative.");
+                    return;
+                }
+				
                 System.out.println("Current stocks: " + stocks);
                 System.out.print("New stocks (or press Enter to keep): ");
                 String newStockInput = scanner.nextLine();
                 if (!newStockInput.isBlank()) stocks = Integer.parseInt(newStockInput);
+				if (stocks < 0) {
+					System.out.println("Stocks cannot be negative.");
+					return;
+				}
             } catch (NumberFormatException e) {
                 System.out.println("Invalid number input.");
                 return;
@@ -311,7 +333,7 @@ public class MiniJavaStoreDB {
             String updateSql = "UPDATE items SET name = ?, price = ?, stocks = ? WHERE code = ?";
             try (PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
                 updateStmt.setString(1, name);
-                updateStmt.setInt(2, price);
+                updateStmt.setBigDecimal(2, price);
                 updateStmt.setInt(3, stocks);
                 updateStmt.setString(4, code);
                 updateStmt.executeUpdate();
