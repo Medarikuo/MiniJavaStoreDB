@@ -4,13 +4,13 @@ import java.util.Scanner;
 
 public class MiniJavaStoreDB {
     private static final String DB_URL = "jdbc:mysql://localhost:3306/MiniJavaStoreDB";
-    private static final String USER = "root"; // change if needed
-    private static final String PASS = "";     // change if needed
+    private static final String USER = "root"; 
+    private static final String PASS = "";    
 
     private static Scanner scanner = new Scanner(System.in);
 
     public static void main(String[] args) {
-        try {
+		try {
             Class.forName("com.mysql.cj.jdbc.Driver");
 
             initializeDatabase(); // Initialize DB and tables
