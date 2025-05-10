@@ -4,23 +4,23 @@ import java.util.Scanner;
 
 public class MiniJavaStoreDB {
     private static final String DB_URL = "jdbc:mysql://localhost:3306/MiniJavaStoreDB";
-    private static final String USER = "root"; // change as needed
-    private static final String PASS = "";     // change as needed
+    private static final String USER = "root"; // change if needed
+    private static final String PASS = "";     // change if needed
 
     private static Scanner scanner = new Scanner(System.in);
 
     public static void main(String[] args) {
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
-			
-			initializeDatabase(); // Initialize DB and tables
+
+            initializeDatabase(); // Initialize DB and tables
 
             try (Connection conn = DriverManager.getConnection(DB_URL, USER, PASS)) {
                 while (true) {
                     System.out.println("\n=== Mini Java Store ===");
                     System.out.println("[1] View Items");
                     System.out.println("[2] Buy Item (Add to Cart)");
-					System.out.println("[3] Remove Item from Cart");
+                    System.out.println("[3] Remove Item from Cart");
                     System.out.println("[4] View Cart");
                     System.out.println("[5] Checkout (Pay)");
                     System.out.println("[6] Clear Cart");
@@ -35,7 +35,7 @@ public class MiniJavaStoreDB {
                     switch (choice) {
                         case "1": viewItems(conn); break;
                         case "2": buyItem(conn); break;
-						case "3": removeItemFromCart(conn); break;
+                        case "3": removeItemFromCart(conn); break;
                         case "4": viewCart(conn); break;
                         case "5": checkout(conn); break;
                         case "6": clearCart(conn); break;
@@ -52,58 +52,43 @@ public class MiniJavaStoreDB {
             e.printStackTrace();
         }
     }
-	
-	//Create its own database and populate the tables
-	private static void initializeDatabase() {
-    String baseUrl = "jdbc:mysql://localhost:3306/";
-    try (Connection conn = DriverManager.getConnection(baseUrl, USER, PASS);
-         Statement stmt = conn.createStatement()) {
 
-        // Create database if not exists
-        stmt.executeUpdate("CREATE DATABASE IF NOT EXISTS MiniJavaStoreDB");
+    private static void initializeDatabase() {
+        String baseUrl = "jdbc:mysql://localhost:3306/";
+        try (Connection conn = DriverManager.getConnection(baseUrl, USER, PASS);
+             Statement stmt = conn.createStatement()) {
 
-        // Connect to the created database
-        try (Connection dbConn = DriverManager.getConnection(DB_URL, USER, PASS);
-             Statement dbStmt = dbConn.createStatement()) {
+            stmt.executeUpdate("CREATE DATABASE IF NOT EXISTS MiniJavaStoreDB");
 
-            // Create `items` table if not exists
-            dbStmt.executeUpdate("""
-                CREATE TABLE IF NOT EXISTS items (
-                    code VARCHAR(10) PRIMARY KEY,
-                    name VARCHAR(100),
-                    price DECIMAL(10,2),
-                    stocks INT
-                )
-            """);
+            try (Connection dbConn = DriverManager.getConnection(DB_URL, USER, PASS);
+                 Statement dbStmt = dbConn.createStatement()) {
 
-            // Create `cart` table if not exists
-            dbStmt.executeUpdate("""
-                CREATE TABLE IF NOT EXISTS cart (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(100),
-                    quantity INT,
-                    total_price DECIMAL(10,2)
-                )
-            """);
+                dbStmt.executeUpdate("CREATE TABLE IF NOT EXISTS items (" +
+                        "code VARCHAR(10) PRIMARY KEY," +
+                        "name VARCHAR(100)," +
+                        "price DECIMAL(10,2)," +
+                        "stocks INT)");
 
-            // Check if `items` table is empty, then insert initial data
-            ResultSet rs = dbStmt.executeQuery("SELECT COUNT(*) FROM items");
-            if (rs.next() && rs.getInt(1) == 0) {
-                dbStmt.executeUpdate("INSERT INTO items (code, name, price, stocks) VALUES " +
-                        "('A001', 'Milk', 50.00, 20)," +
-                        "('B002', 'Bread', 30.00, 15)," +
-                        "('C003', 'Eggs', 10.00, 50)");
-                System.out.println("Initial data populated.");
+                dbStmt.executeUpdate("CREATE TABLE IF NOT EXISTS cart (" +
+                        "id INT AUTO_INCREMENT PRIMARY KEY," +
+                        "code VARCHAR(10)," +
+                        "quantity INT," +
+                        "total_price DECIMAL(10,2))");
+
+                ResultSet rs = dbStmt.executeQuery("SELECT COUNT(*) FROM items");
+                if (rs.next() && rs.getInt(1) == 0) {
+                    dbStmt.executeUpdate("INSERT INTO items (code, name, price, stocks) VALUES " +
+                            "('A001', 'Milk', 50.00, 20)," +
+                            "('B002', 'Bread', 30.00, 15)," +
+                            "('C003', 'Eggs', 10.00, 50)");
+                    System.out.println("Initial data populated.");
+                }
             }
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
-
-    } catch (SQLException e) {
-        e.printStackTrace();
     }
-}
 
-	
-    // Show item listing
     private static void viewItems(Connection conn) throws SQLException {
         String sql = "SELECT code, name, price FROM items";
         try (Statement stmt = conn.createStatement();
@@ -117,19 +102,21 @@ public class MiniJavaStoreDB {
         }
     }
 
-    // Add to cart
     private static void buyItem(Connection conn) throws SQLException {
         System.out.print("Enter item code: ");
         String code = scanner.nextLine().trim().toUpperCase();
         if (code.isEmpty()) return;
 
         String sql = "SELECT * FROM items WHERE code = ?";
+        conn.setAutoCommit(false); // begin transaction
+
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, code);
             ResultSet rs = ps.executeQuery();
 
             if (!rs.next()) {
                 System.out.println("Item not found.");
+                conn.rollback();
                 return;
             }
 
@@ -143,104 +130,166 @@ public class MiniJavaStoreDB {
                 qty = Integer.parseInt(scanner.nextLine());
                 if (qty <= 0 || qty > stocks) {
                     System.out.println("Invalid or insufficient quantity.");
+                    conn.rollback();
                     return;
                 }
             } catch (NumberFormatException e) {
                 System.out.println("Invalid number.");
+                conn.rollback();
                 return;
             }
-			
-			BigDecimal totalPrice = price.multiply(BigDecimal.valueOf(qty));
+
+            BigDecimal totalPrice = price.multiply(BigDecimal.valueOf(qty));
             int newStocks = stocks - qty;
+
             try (PreparedStatement updatePS = conn.prepareStatement("UPDATE items SET stocks = ? WHERE code = ?")) {
                 updatePS.setInt(1, newStocks);
                 updatePS.setString(2, code);
                 updatePS.executeUpdate();
             }
 
-            try (PreparedStatement checkPS = conn.prepareStatement("SELECT * FROM cart WHERE name = ?")) {
-                checkPS.setString(1, name);
+            try (PreparedStatement checkPS = conn.prepareStatement("SELECT * FROM cart WHERE code = ?")) {
+                checkPS.setString(1, code);
                 ResultSet cartRS = checkPS.executeQuery();
 
                 if (cartRS.next()) {
                     int newQty = cartRS.getInt("quantity") + qty;
                     BigDecimal newTotal = cartRS.getBigDecimal("total_price").add(totalPrice);
                     try (PreparedStatement updateCart = conn.prepareStatement(
-                            "UPDATE cart SET quantity = ?, total_price = ? WHERE name = ?")) {
+                            "UPDATE cart SET quantity = ?, total_price = ? WHERE code = ?")) {
                         updateCart.setInt(1, newQty);
                         updateCart.setBigDecimal(2, newTotal);
-                        updateCart.setString(3, name);
+                        updateCart.setString(3, code);
                         updateCart.executeUpdate();
                     }
                 } else {
                     try (PreparedStatement insertPS = conn.prepareStatement(
-                            "INSERT INTO cart (name, quantity, total_price) VALUES (?, ?, ?)")) {
-                        insertPS.setString(1, name);
+                            "INSERT INTO cart (code, quantity, total_price) VALUES (?, ?, ?)")) {
+                        insertPS.setString(1, code);
                         insertPS.setInt(2, qty);
                         insertPS.setBigDecimal(3, totalPrice);
                         insertPS.executeUpdate();
                     }
                 }
-                System.out.println("Added to cart: " + name + " x" + qty);
             }
+
+            conn.commit();
+            System.out.println("Added to cart: " + name + " x" + qty);
+        } catch (SQLException e) {
+            conn.rollback();
+            e.printStackTrace();
+        } finally {
+            conn.setAutoCommit(true); // reset auto-commit
         }
     }
 
-    // View cart
     private static void viewCart(Connection conn) throws SQLException {
-        String sql = "SELECT * FROM cart";
+        String sql = "SELECT c.code, i.name, c.quantity, c.total_price FROM cart c JOIN items i ON c.code = i.code";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             BigDecimal total = BigDecimal.ZERO;
             System.out.println("\nYour Cart:");
-            System.out.printf("%-30s %-10s %-10s\n", "Item", "Qty", "Price");
+            System.out.printf("%-10s %-30s %-10s %-10s\n", "Code", "Item", "Qty", "Price");
             while (rs.next()) {
-                System.out.printf("%-30s %-10d P%-10.2f\n",
-                        rs.getString("name"), rs.getInt("quantity"), rs.getBigDecimal("total_price"));
+                System.out.printf("%-10s %-30s %-10d P%-10.2f\n",
+                        rs.getString("code"),
+                        rs.getString("name"),
+                        rs.getInt("quantity"),
+                        rs.getBigDecimal("total_price"));
                 total = total.add(rs.getBigDecimal("total_price"));
             }
             System.out.println("Total: P" + total.setScale(2));
         }
     }
 
-    // Finalize cart purchase
     private static void checkout(Connection conn) throws SQLException {
-        viewCart(conn);
-        try (Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate("DELETE FROM cart");
+        conn.setAutoCommit(false);
+        try {
+            viewCart(conn);
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("DELETE FROM cart");
+            }
+            conn.commit();
             System.out.println("Checked out successfully.");
+        } catch (Exception e) {
+            conn.rollback();
+            System.out.println("Checkout failed.");
+        } finally {
+            conn.setAutoCommit(true);
         }
     }
 
-    // Empty the cart and restock items back to inventory
     private static void clearCart(Connection conn) throws SQLException {
-		String sql = "SELECT name, quantity FROM cart";
-		try (Statement stmt = conn.createStatement();
-			 ResultSet rs = stmt.executeQuery(sql)) {
+        conn.setAutoCommit(false);
+        try {
+            String sql = "SELECT code, quantity FROM cart";
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) {
+                    String code = rs.getString("code");
+                    int qty = rs.getInt("quantity");
+                    try (PreparedStatement ps = conn.prepareStatement("UPDATE items SET stocks = stocks + ? WHERE code = ?")) {
+                        ps.setInt(1, qty);
+                        ps.setString(2, code);
+                        ps.executeUpdate();
+                    }
+                }
+            }
 
-			while (rs.next()) {
-				String name = rs.getString("name");
-				int qty = rs.getInt("quantity");
-				try (PreparedStatement ps = conn.prepareStatement("UPDATE items SET stocks = stocks + ? WHERE name = ?")) {
-					ps.setInt(1, qty);
-					ps.setString(2, name);
-					ps.executeUpdate();
-				}
-			}
-		}
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("DELETE FROM cart");
+            }
 
-		try (Statement stmt = conn.createStatement()) {
-			stmt.executeUpdate("DELETE FROM cart");
-			System.out.println("Cart has been cleared and items goes back to inventory");
-		}
-	}
+            conn.commit();
+            System.out.println("Cart has been cleared and items restocked.");
+        } catch (Exception e) {
+            conn.rollback();
+            System.out.println("Failed to clear cart.");
+        } finally {
+            conn.setAutoCommit(true);
+        }
+    }
 
+    private static void removeItemFromCart(Connection conn) throws SQLException {
+        System.out.print("Enter item code to remove from cart: ");
+        String code = scanner.nextLine().trim().toUpperCase();
 
-    // Add new item to inventory
+        conn.setAutoCommit(false);
+        try (PreparedStatement selectStmt = conn.prepareStatement("SELECT quantity FROM cart WHERE code = ?")) {
+            selectStmt.setString(1, code);
+            ResultSet rs = selectStmt.executeQuery();
+
+            if (rs.next()) {
+                int qty = rs.getInt("quantity");
+
+                try (PreparedStatement updateInventory = conn.prepareStatement("UPDATE items SET stocks = stocks + ? WHERE code = ?")) {
+                    updateInventory.setInt(1, qty);
+                    updateInventory.setString(2, code);
+                    updateInventory.executeUpdate();
+                }
+
+                try (PreparedStatement deleteStmt = conn.prepareStatement("DELETE FROM cart WHERE code = ?")) {
+                    deleteStmt.setString(1, code);
+                    deleteStmt.executeUpdate();
+                }
+
+                conn.commit();
+                System.out.println("Item removed from cart and restocked.");
+            } else {
+                conn.rollback();
+                System.out.println("Item not found in cart.");
+            }
+        } catch (Exception e) {
+            conn.rollback();
+            e.printStackTrace();
+        } finally {
+            conn.setAutoCommit(true);
+        }
+    }
+
     private static void addItem(Connection conn) throws SQLException {
         System.out.print("Enter code: ");
         String code = scanner.nextLine().trim().toUpperCase();
-		// Check for duplicate code
         String checkSql = "SELECT * FROM items WHERE code = ?";
         try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
             checkStmt.setString(1, code);
@@ -250,26 +299,25 @@ public class MiniJavaStoreDB {
                 return;
             }
         }
+
         System.out.print("Enter name: ");
         String name = scanner.nextLine().trim();
-		
+
         try {
             System.out.print("Enter price: ");
             BigDecimal price = new BigDecimal(scanner.nextLine());
-			
-			if (price.compareTo(BigDecimal.ZERO) < 0) {
+            if (price.compareTo(BigDecimal.ZERO) < 0) {
                 System.out.println("Price cannot be negative.");
                 return;
             }
-			
+
             System.out.print("Enter stocks: ");
             int stocks = Integer.parseInt(scanner.nextLine());
-			
-			if (stocks < 0) {
-				System.out.println("Stocks cannot be negative.");
-				return;
-			}
-			
+            if (stocks < 0) {
+                System.out.println("Stocks cannot be negative.");
+                return;
+            }
+
             String sql = "INSERT INTO items (code, name, price, stocks) VALUES (?, ?, ?, ?)";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setString(1, code);
@@ -284,20 +332,21 @@ public class MiniJavaStoreDB {
         }
     }
 
-    // Update existing item
     private static void updateItem(Connection conn) throws SQLException {
         System.out.print("Enter item code to update: ");
         String code = scanner.nextLine().trim().toUpperCase();
-		String selectSql = "SELECT * FROM items WHERE code = ?";
+
+        String selectSql = "SELECT * FROM items WHERE code = ?";
         try (PreparedStatement selectStmt = conn.prepareStatement(selectSql)) {
             selectStmt.setString(1, code);
             ResultSet rs = selectStmt.executeQuery();
+
             if (!rs.next()) {
                 System.out.println("Item not found.");
                 return;
             }
-			
-			String name = rs.getString("name");
+
+            String name = rs.getString("name");
             BigDecimal price = rs.getBigDecimal("price");
             int stocks = rs.getInt("stocks");
 
@@ -311,20 +360,19 @@ public class MiniJavaStoreDB {
                 System.out.print("New price (or press Enter to keep): ");
                 String newPriceInput = scanner.nextLine();
                 if (!newPriceInput.isBlank()) price = new BigDecimal(newPriceInput);
-				
-				if (price.compareTo(BigDecimal.ZERO) < 0) {
+                if (price.compareTo(BigDecimal.ZERO) < 0) {
                     System.out.println("Price cannot be negative.");
                     return;
                 }
-				
+
                 System.out.println("Current stocks: " + stocks);
                 System.out.print("New stocks (or press Enter to keep): ");
                 String newStockInput = scanner.nextLine();
                 if (!newStockInput.isBlank()) stocks = Integer.parseInt(newStockInput);
-				if (stocks < 0) {
-					System.out.println("Stocks cannot be negative.");
-					return;
-				}
+                if (stocks < 0) {
+                    System.out.println("Stocks cannot be negative.");
+                    return;
+                }
             } catch (NumberFormatException e) {
                 System.out.println("Invalid number input.");
                 return;
@@ -341,69 +389,27 @@ public class MiniJavaStoreDB {
             }
         }
     }
-	
-	// Delete item from cart
-	private static void removeItemFromCart(Connection conn) throws SQLException {
-		System.out.print("Enter item name to remove from cart: ");
-		String name = scanner.nextLine().trim();
 
-		String selectSql = "SELECT quantity FROM cart WHERE name = ?";
-		try (PreparedStatement selectStmt = conn.prepareStatement(selectSql)) {
-			selectStmt.setString(1, name);
-			ResultSet rs = selectStmt.executeQuery();
-			if (rs.next()) {
-				int qty = rs.getInt("quantity");
-
-				// Restore the quantity back to inventory
-				try (PreparedStatement updateInventory = conn.prepareStatement(
-						"UPDATE items SET stocks = stocks + ? WHERE name = ?")) {
-					updateInventory.setInt(1, qty);
-					updateInventory.setString(2, name);
-					updateInventory.executeUpdate();
-				}
-
-				// Remove item from cart
-				try (PreparedStatement deleteStmt = conn.prepareStatement("DELETE FROM cart WHERE name = ?")) {
-					deleteStmt.setString(1, name);
-					deleteStmt.executeUpdate();
-				}
-
-				System.out.println("Item removed from cart and restocked.");
-			} else {
-				System.out.println("Item not found in cart.");
-			}
-		}
-	}
-
-    // Delete item from inventory
     private static void deleteItem(Connection conn) throws SQLException {
         System.out.print("Enter item code to delete: ");
         String code = scanner.nextLine().trim().toUpperCase();
 
-        String getNameSql = "SELECT name FROM items WHERE code = ?";
-        try (PreparedStatement nameStmt = conn.prepareStatement(getNameSql)) {
-            nameStmt.setString(1, code);
-            ResultSet rs = nameStmt.executeQuery();
-            if (rs.next()) {
-                String name = rs.getString("name");
+        try (PreparedStatement deleteCart = conn.prepareStatement("DELETE FROM cart WHERE code = ?")) {
+            deleteCart.setString(1, code);
+            deleteCart.executeUpdate();
+        }
 
-                try (PreparedStatement deleteCart = conn.prepareStatement("DELETE FROM cart WHERE name = ?")) {
-                    deleteCart.setString(1, name);
-                    deleteCart.executeUpdate();
-                }
-
-                try (PreparedStatement deleteItem = conn.prepareStatement("DELETE FROM items WHERE code = ?")) {
-                    deleteItem.setString(1, code);
-                    deleteItem.executeUpdate();
-                    System.out.println("Item deleted.");
-                }
+        try (PreparedStatement deleteItem = conn.prepareStatement("DELETE FROM items WHERE code = ?")) {
+            deleteItem.setString(1, code);
+            int rows = deleteItem.executeUpdate();
+            if (rows > 0) {
+                System.out.println("Item deleted.");
             } else {
                 System.out.println("Item code not found.");
             }
         }
     }
 
-    // View inventory
     private static void viewInventory(Connection conn) throws SQLException {
         String sql = "SELECT code, name, stocks FROM items";
         try (Statement stmt = conn.createStatement();
@@ -419,4 +425,3 @@ public class MiniJavaStoreDB {
         }
     }
 }
-
